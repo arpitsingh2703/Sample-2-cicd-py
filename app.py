@@ -1,14 +1,14 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from flask import Flask, jsonify
 
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"Automated Deployment Successful again!")
+# Make sure the variable name is 'app'
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    return jsonify({
+        "status": "success",
+        "message": "Python app running in Docker on GCP VM via GitHub Actions!"
+    })
 
 if __name__ == "__main__":
-    server_address = ('', 8080)
-    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
-    print("Server running on port 8080...")
-    httpd.serve_forever()
+    app.run(host="0.0.0.0", port=8000)

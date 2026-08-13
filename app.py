@@ -6,7 +6,7 @@ app = Flask(__name__)
 def hello():
     return jsonify({
         "status": "success",
-        "message": "Python app running in Docker on GCP VM via GitHub Actions!"
+        "message": "Python app running in Docker on GCP VM via GitHub Actions!!!!!!!!!!!!!!!!"
     })
 
 @app.route("/health")

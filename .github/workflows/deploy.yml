@@ -1,59 +1,43 @@
-name: Deploy Python App to GCP VM
+name: Deploy Python App to GCP VM via SSH
 
 on:
   push:
     branches:
       - main
 
-env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: asia-south1
-  GAR_REPO: python-repo
-  IMAGE_NAME: sample-python-app
-  VM_NAME: docker-cicd
-  VM_ZONE: asia-south1-c
-
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v2
+    - name: Deploy via SSH directly on VM
+      uses: appleboy/ssh-action@v1.0.3
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        host: ${{ secrets.VM_IP }}
+        username: ${{ secrets.VM_USERNAME }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        script: |
+          # 1. Clone repository if it doesn't exist, otherwise pull latest changes
+          if [ ! -d "Sample-2-cicd-py" ]; then
+            git clone https://github.com/arpitsingh2703/Sample-2-cicd-py.git
+            cd Sample-2-cicd-py
+          else
+            cd Sample-2-cicd-py
+            git pull origin main
+          fi
 
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v2
+          # 2. Build Docker container image locally on the VM
+          sudo docker build -t python-app:latest .
 
-    - name: Configure Docker CLI for Artifact Registry
-      run: |
-        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-    - name: Build and Push Docker Image
-      run: |
-        IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-        LATEST_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/${{ env.IMAGE_NAME }}:latest"
-        
-        docker build -t $IMAGE_URI -t $LATEST_URI .
-        docker push $IMAGE_URI
-        docker push $LATEST_URI
-
-    - name: SSH and Deploy to GCP VM
-      run: |
-        IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-        
-        gcloud compute ssh ${{ env.VM_NAME }} --zone=${{ env.VM_ZONE }} --command="
-          sudo gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet && \
-          docker pull $IMAGE_URI && \
-          docker stop app-container || true && \
-          docker rm app-container || true && \
-          docker run -d \
+          # 3. Stop and replace running container
+          sudo docker stop app-container || true
+          sudo docker rm app-container || true
+          
+          sudo docker run -d \
             --name app-container \
             --restart always \
             -p 80:8000 \
-            $IMAGE_URI
-        "
+            python-app:latest

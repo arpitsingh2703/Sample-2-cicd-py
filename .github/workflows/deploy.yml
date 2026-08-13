@@ -1,43 +1,61 @@
-name: Deploy Python App to GCP VM via SSH
+name: Build Docker Hub Image & Deploy to GCP VM
 
 on:
   push:
     branches:
       - main
 
+env:
+  IMAGE_NAME: sample-python-app
+
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Deploy via SSH directly on VM
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Deploy to GCP VM via SSH
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.VM_IP }}
-        username: ${{ secrets.VM_USERNAME }}
+        username: github-actions
         key: ${{ secrets.VM_SSH_KEY }}
         script: |
-          # 1. Clone repository if it doesn't exist, otherwise pull latest changes
-          if [ ! -d "Sample-2-cicd-py" ]; then
-            git clone https://github.com/arpitsingh2703/Sample-2-cicd-py.git
-            cd Sample-2-cicd-py
-          else
-            cd Sample-2-cicd-py
-            git pull origin main
-          fi
+          # 1. Log in to Docker Hub on the VM
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-          # 2. Build Docker container image locally on the VM
-          sudo docker build -t python-app:latest .
+          # 2. Pull the latest image from Docker Hub
+          sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
 
-          # 3. Stop and replace running container
+          # 3. Stop and remove the old container if running
           sudo docker stop app-container || true
           sudo docker rm app-container || true
-          
+
+          # 4. Run the updated container
           sudo docker run -d \
             --name app-container \
             --restart always \
             -p 80:8000 \
-            python-app:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest

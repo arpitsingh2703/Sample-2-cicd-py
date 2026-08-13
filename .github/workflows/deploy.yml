@@ -53,9 +53,10 @@ jobs:
           sudo docker stop app-container || true
           sudo docker rm app-container || true
 
-          # 4. Run the updated container
+          # 4. Run the container listening on BOTH port 80 and port 8080
           sudo docker run -d \
             --name app-container \
             --restart always \
             -p 80:8000 \
+            -p 8080:8000 \
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
